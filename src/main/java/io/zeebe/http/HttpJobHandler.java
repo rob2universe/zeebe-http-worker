@@ -21,6 +21,8 @@ import com.fasterxml.jackson.core.JsonPointer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.xml.JacksonXmlModule;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import io.camunda.zeebe.client.api.response.ActivatedJob;
 import io.camunda.zeebe.client.api.worker.JobClient;
 import io.camunda.zeebe.client.api.worker.JobHandler;
@@ -61,10 +63,17 @@ public class HttpJobHandler implements JobHandler {
 
   private final HttpClient client = HttpClient.newHttpClient();
   private final ObjectMapper objectMapper = new ObjectMapper();
+  private ObjectMapper xmlObjectMapper;
   private final PlaceholderProcessor placeholderProcessor = new PlaceholderProcessor();
 
   @Autowired
   private EnvironmentVariablesProvider environmentVariablesProvider;
+
+  public HttpJobHandler() {
+    JacksonXmlModule xmlModule = new JacksonXmlModule();
+    xmlModule.setDefaultUseWrapper(false);
+    ObjectMapper xmlObjectMapper = new XmlMapper(xmlModule);
+  }
 
   @Override
   public void handle(JobClient jobClient, ActivatedJob job)
@@ -255,7 +264,7 @@ public class HttpJobHandler implements JobHandler {
           ) {
             return body;
           } else {
-            return bodyToObject(body);
+            return bodyToObject(body, response.headers().allValues("Content-Type").toString());
           }
         })
         .ifPresent(body -> result.put("body", body));
@@ -263,9 +272,16 @@ public class HttpJobHandler implements JobHandler {
     return result;
   }
 
-  private Object bodyToObject(String body) {
+
+  private Object bodyToObject(String body, String contentType) {
     try {
-      return objectMapper.readValue(body, Object.class);
+      if(contentType.contains("application/xml"))
+      {
+        return xmlObjectMapper.readValue(body, Object.class);
+      }
+      else {
+        return objectMapper.readValue(body, Object.class);
+      }
     } catch (IOException e) {
       throw new RuntimeException("Failed to deserialize response body from JSON: " + body);
     }
